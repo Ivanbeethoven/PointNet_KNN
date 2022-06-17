@@ -159,16 +159,20 @@ __global__ void knn_kernal_gpu(int b,int n,int m,int k,const float * xyz1,const 
     int index = threadIdx.x;
     int stride = blockDim.x;
 
+    __shared__ int point_index[m][n];
+    __shared__ float point_val[m][n]; 
     // copy from dist to dist_out
     for (int j=index;j<m;j+=stride) {
         for (int s=0;s<n;++s) {
             for(int pos =0;pos<3;pos++){
-                out[j*n+s] += (xyz1[s][pos] - xyz2[j][pos])*(xyz1[s][pos] - xyz2[j][pos]) +;//取出的是此batch中xyz1中第s个和xyz2中第j个个的距离
+                point_val[j][s] += (xyz1[s][pos] - xyz2[j][pos])*(xyz1[s][pos] - xyz2[j][pos]);
+                out[j*n+s] += (xyz1[s][pos] - xyz2[j][pos])*(xyz1[s][pos] - xyz2[j][pos]) ;//取出的是此batch中xyz1中第s个和xyz2中第j个个的距离
             }
             outi[j*n+s] = s;
+            point_index[j][s]=s;
         }
     }
-
+        //此处不需要_syncthreads()因为都是在一个block中的数据 不会互相影响
     float *p_dist;
     for (int j=index;j<m;j+=stride) {
         p_dist = out+j*n;
@@ -177,19 +181,22 @@ __global__ void knn_kernal_gpu(int b,int n,int m,int k,const float * xyz1,const 
             int min=s; 
             // find the min
             for (int t=s+1;t<n;++t) {
-                if (p_dist[t]<p_dist[min]) {
+                if (point_val[j][t]<point_val[j][min]) {
                     min = t;
                 }
             }
             // swap min-th and i-th element
             if (min!=s) {
-                float tmp = p_dist[min];
-                p_dist[min] = p_dist[s];
-                p_dist[s] = tmp;
-                int tmpi = outi[j*n+min];
-                outi[j*n+min] = outi[j*n+s];
-                outi[j*n+s] = tmpi;
+                float tmp = point_val[j][min];
+                point_val[j][min] = point_val[j][s];
+                point_val[j][s] = tmp;
+                int tmpi = point_index[j][min];
+                point_index[j][min] = point_index[j][s];
+                point_index[j][s] = tmpi;
             }
+            //最后将结果写入输出变量
+            p_dist[s] = point_val[j][s];
+            outi[j*n+s] = point_index[j][min];
         }
     }
 
