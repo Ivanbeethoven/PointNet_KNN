@@ -47,18 +47,18 @@ def knn_point(k, xyz1, xyz2):
 ```
 
 ### 源代码分析
-    其中，该代码段先是待带查询的点（xyt2）与已知点（xyz1），求出所有两两对应的欧氏距离的平方（dist），这部分是调用了tf的自带函数,`tf.tile`,`tf.reducesum`,`tf.slice`，然后利用CUDA的实现的在batch内的选择排序进行计算。
-    我们期望能够将整个knn_point改写为一个kernal算子。
+其中，该代码段先是待带查询的点（xyt2）与已知点（xyz1），求出所有两两对应的欧氏距离的平方（dist），这部分是调用了tf的自带函数,`tf.tile`,`tf.reducesum`,`tf.slice`，然后利用CUDA的实现的在batch内的选择排序进行计算。
+我们期望能够将整个knn_point改写为一个kernal算子。
 
-    1. 首先在一个batch内 可以通过共享变量的方式*[1]
+1. 首先在一个batch内 可以通过共享变量的方式 *[1]
 
 ```c
     __shared__ int point_index[m][n];
     __shared__ float point_val[m][n]; 
 ```
-    将输入的所有点位置信息计算并存储 。
+将输入的所有点位置信息计算并存储 。
 
-    2. 然后进行k次选择排序，并将结果记录进输出变量指针指向的区域。
+2. 然后进行k次选择排序，并将结果记录进输出变量指针指向的区域。
 ```c
     for (int s=0;s<k;++s) {
             int min=s; 
@@ -68,21 +68,20 @@ def knn_point(k, xyz1, xyz2):
             outi[j*n+s] = point_index[j][min];
         }
 ```
-    这边完成了cuda的编写
+这便完成了cuda的编写
 
-    3.然后是进行tensorflow自定义算子的注册.
-    通过继承tensorflow的自定义类`void KnnKernalGpuOp:public OpKernel`，并重写构造函数与`Compute`方法,在该方法内应调用cuda的接口函数
+3.然后是进行tensorflow自定义算子的注册.通过继承tensorflow的自定义类`void KnnKernalGpuOp:public OpKernel`，并重写构造函数与`Compute`方法,在该方法内应调用cuda的接口函数
 ```c
     void knn_gpu(int b,int n,int m,int k,const float * xyz1,const float * xyz2,float * outi,float *out)
     {
         knn_kernal_gpu<<<b,256>>>(b,n,m,k,xyz1,xyz2,outi,out);
     }
 ```
-    4.还应当注册该自定义算子
-    ```c
+4.还应当注册该自定义算子 *[2]
+```c
     REGISTER_KERNEL_BUILDER(Name("KnnKernal").Device(DEVICE_GPU),KnnKernalGpuOp);
-    ```
-    > 注意，此处的Name参数将决定在python中调用cuda的函数名。此处一般为驼峰命名，但在调用时应使用蛇形命名来调用（以符合 PEP8）。详细说明见[官方文档](https://www.tensorflow.org/guide/create_op?hl=zh-cn)
+```
+    
 
 
 
@@ -91,3 +90,4 @@ def knn_point(k, xyz1, xyz2):
 
 ## 注意/TODO
 [1] 这里其实不需要用`__share__`关键字来分配变量，因为本算法在不同Block和不同Thread中的操作并不会相互影响，不存在数据相关。所以可以使用本地变量存储，或能进一步提高效率。但考虑到索引方便，暂时如此。
+[2] 注意，此处的Name参数将决定在python中调用cuda的函数名。此处一般为驼峰命名，但在调用时应使用蛇形命名来调用（以符合 PEP8）。详细说明见[官方文档](https://www.tensorflow.org/guide/create_op?hl=zh-cn)
