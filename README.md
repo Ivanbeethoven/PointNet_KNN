@@ -90,4 +90,5 @@ def knn_point(k, xyz1, xyz2):
 
 ## 注意/TODO
 [1] 这里其实不需要用`__share__`关键字来分配变量，因为本算法在不同Block和不同Thread中的操作并不会相互影响，不存在数据相关。所以可以使用本地变量存储，或能进一步提高效率。但考虑到索引方便，暂时如此。
+
 [2] 注意，此处的Name参数将决定在python中调用cuda的函数名。此处一般为驼峰命名，但在调用时应使用蛇形命名来调用（以符合 PEP8）。详细说明见[官方文档](https://www.tensorflow.org/guide/create_op?hl=zh-cn)
