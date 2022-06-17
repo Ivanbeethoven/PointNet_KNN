@@ -19,6 +19,7 @@ def query_ball_point(radius, nsample, xyz1, xyz2):
     #return grouping_module.query_ball_point(radius, nsample, xyz1, xyz2)
     return grouping_module.query_ball_point(xyz1, xyz2, radius, nsample)
 ops.NoGradient('QueryBallPoint')
+
 def select_top_k(k, dist):
     '''
     Input:
@@ -30,6 +31,7 @@ def select_top_k(k, dist):
     '''
     return grouping_module.selection_sort(dist, k)
 ops.NoGradient('SelectionSort')
+
 def group_point(points, idx):
     '''
     Input:
@@ -45,6 +47,9 @@ def _group_point_grad(op, grad_out):
     idx = op.inputs[1]
     return [grouping_module.group_point_grad(points, idx, grad_out), None]
 
+
+
+
 def knn_point(k, xyz1, xyz2):
     '''
     Input:
@@ -59,11 +64,25 @@ def knn_point(k, xyz1, xyz2):
     n = xyz1.get_shape()[1].value
     c = xyz1.get_shape()[2].value
     m = xyz2.get_shape()[1].value
-    print b, n, c, m
+    print b, n, c, m  
+    '''
+    b = batch_size
+    n = ndataset
+    c = 3
+    m = npoint
+    '''
     print xyz1, (b,1,n,c)
     xyz1 = tf.tile(tf.reshape(xyz1, (b,1,n,c)), [1,m,1,1])
     xyz2 = tf.tile(tf.reshape(xyz2, (b,m,1,c)), [1,1,n,1])
-    dist = tf.reduce_sum((xyz1-xyz2)**2, -1)
+    '''
+    xyz1:(batch_size,m,n,3)
+    xyz2:(batch_size,m,n,3)
+
+    '''
+    dist = tf.reduce_sum((xyz1-xyz2)**2, axis=-1) #按照最后一个维度求和 即求出的是欧式距离平方 
+    #dist :(batch_size,m,n)
+    
+
     print dist, k
     outi, out = select_top_k(k, dist)
     idx = tf.slice(outi, [0,0,0], [-1,-1,k])
@@ -71,6 +90,14 @@ def knn_point(k, xyz1, xyz2):
     print idx, val
     #val, idx = tf.nn.top_k(-dist, k=k) # ONLY SUPPORT CPU
     return val, idx
+
+
+def knn_point_gpu(k,xyz1,xyz2):
+    return grouping_module.knn_kernal(k,xyz1,xyz2)
+ops.NoGradient('KnnKernal')
+
+
+
 
 if __name__=='__main__':
     knn=True
@@ -87,7 +114,7 @@ if __name__=='__main__':
         radius = 0.1 
         nsample = 64
         if knn:
-            _, idx = knn_point(nsample, xyz1, xyz2)
+            _, idx = knn_point_gpu(nsample, xyz1, xyz2)
             grouped_points = group_point(points, idx)
         else:
             idx, _ = query_ball_point(radius, nsample, xyz1, xyz2)

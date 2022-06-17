@@ -80,14 +80,29 @@ __global__ void group_point_grad_gpu(int b, int n, int c, int m, int nsample, co
 // input: k (1), distance matrix dist (b,m,n)
 // output: idx (b,m,n), dist_out (b,m,n)
 // only the top k results within n are useful
+
+/**
+ * @brief KNN函数实现的排序GPU支持
+
+ * @in
+ * @param b:in BatchSize
+ * @param n:in 输入待定点的数量input points
+ * @param m:IN query points 的数量
+ * @param k:in KNN的k值
+ * @param dist:in 输入的点位置欧式距离平法信息【Batch】[m][n]
+ * @param outi:out 前k的距离点位的索引
+ * @param out：out 前k的距离点位的距离
+ * @return __global__ 
+ */
 __global__ void selection_sort_gpu(int b, int n, int m, int k, const float *dist, int *outi, float *out) {
     int batch_index = blockIdx.x;
-    dist+=m*n*batch_index;
+    dist+=m*n*batch_index;//定位开始位置
     outi+=m*n*batch_index;
     out+=m*n*batch_index;
 
-    int index = threadIdx.x;
-    int stride = blockDim.x;
+
+    int index = threadIdx.x; //线程id
+    int stride = blockDim.x; //block大小
 
     // copy from dist to dist_out
     for (int j=index;j<m;j+=stride) {
@@ -122,6 +137,64 @@ __global__ void selection_sort_gpu(int b, int n, int m, int k, const float *dist
     }
 }
 
+/**
+ * @brief KNN的直接gpu实现
+ * 
+ * @param b 
+ * @param n 
+ * @param m 
+ * @param k 
+ * @param xyz1 [b][n][3]
+ * @param xyz2 [b][m][3]
+ * @param outi 
+ * @param out 
+ * @return __global__ 
+ */
+__global__ void knn_kernal_gpu(int b,int n,int m,int k,const float * xyz1,const float * xyz2,float * outi,float *out){
+    //TODO:实现knn核算子
+    int batch_index = blockIdx.x;
+    xyz1+=3*n*batch_index;
+    xyz2+=3*m*batch_index;
+
+    int index = threadIdx.x;
+    int stride = blockDim.x;
+
+    // copy from dist to dist_out
+    for (int j=index;j<m;j+=stride) {
+        for (int s=0;s<n;++s) {
+            for(int pos =0;pos<3;pos++){
+                out[j*n+s] += (xyz1[s][pos] - xyz2[j][pos])*(xyz1[s][pos] - xyz2[j][pos]) +;//取出的是此batch中xyz1中第s个和xyz2中第j个个的距离
+            }
+            outi[j*n+s] = s;
+        }
+    }
+
+    float *p_dist;
+    for (int j=index;j<m;j+=stride) {
+        p_dist = out+j*n;
+        // selection sort for the first k elements
+        for (int s=0;s<k;++s) {
+            int min=s; 
+            // find the min
+            for (int t=s+1;t<n;++t) {
+                if (p_dist[t]<p_dist[min]) {
+                    min = t;
+                }
+            }
+            // swap min-th and i-th element
+            if (min!=s) {
+                float tmp = p_dist[min];
+                p_dist[min] = p_dist[s];
+                p_dist[s] = tmp;
+                int tmpi = outi[j*n+min];
+                outi[j*n+min] = outi[j*n+s];
+                outi[j*n+s] = tmpi;
+            }
+        }
+    }
+
+
+}
 void queryBallPointLauncher(int b, int n, int m, float radius, int nsample, const float *xyz1, const float *xyz2, int *idx, int *pts_cnt) {
     query_ball_point_gpu<<<b,256>>>(b,n,m,radius,nsample,xyz1,xyz2,idx,pts_cnt);
     //cudaDeviceSynchronize();
@@ -138,4 +211,9 @@ void groupPointGradLauncher(int b, int n, int c, int m, int nsample, const float
     group_point_grad_gpu<<<b,256>>>(b,n,c,m,nsample,grad_out,idx,grad_points);
     //group_point_grad_gpu<<<1,1>>>(b,n,c,m,nsample,grad_out,idx,grad_points);
     //cudaDeviceSynchronize();
+}
+
+void knn_gpu(int b,int n,int m,int k,const float * xyz1,const float * xyz2,float * outi,float *out)
+{
+    knn_kernal_gpu<<<b,256>>>(b,n,m,k,xyz1,xyz2,outi,out);
 }

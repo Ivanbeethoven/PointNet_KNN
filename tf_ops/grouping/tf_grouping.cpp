@@ -62,6 +62,24 @@ REGISTER_OP("GroupPointGrad")
         return Status::OK();
     });
 
+REGISTER_OP("KnnKernal")
+    .Attr("k: int")
+    .Input("xyz1: float32")
+    .Input("xyz2: float32")
+    .Output("outi: int32")
+    .Output("out: float32")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+        c->set_output(0, c->input(0));
+        c->set_output(1, c->input(0));
+        return Status::OK();
+    });
+
+
+
+
+
+
+
 
 void queryBallPointLauncher(int b, int n, int m, float radius, int nsample, const float *xyz1, const float *xyz2, int *idx, int *pts_cnt);
 class QueryBallPointGpuOp : public OpKernel {
@@ -105,6 +123,9 @@ class QueryBallPointGpuOp : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("QueryBallPoint").Device(DEVICE_GPU), QueryBallPointGpuOp);
 
+
+
+
 void selectionSortLauncher(int b, int n, int m, int k, const float *dist, int *outi, float *out);
 class SelectionSortGpuOp : public OpKernel {
     public:
@@ -138,6 +159,44 @@ class SelectionSortGpuOp : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("SelectionSort").Device(DEVICE_GPU), SelectionSortGpuOp);
 
+void knnKernalGpuLauncher(int b, int n, int m, int k, const float *xyz1,const float *xyz2, int *outi, float *out)
+void KnnKernalGpuOp:public OpKernel{
+    public:
+        explicit KnnKernalGpuOp(OpKernelConstruction* context) : OpKernel(context) {
+            OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
+            OP_REQUIRES(context, k_ > 0, errors::InvalidArgument("SelectionSort expects positive k"));
+        }
+
+        void Compute(OpKernelContext* context) override {
+            const Tensor& xyz1_tensor = context->input(0);//xyz1 b,m,3
+            const Tensor& xyz2_tensor = context->input(1);
+            OP_REQUIRES(context, xyz1_tensor.dims()==3, errors::InvalidArgument("SelectionSort expects (b,m,3) dist shape."));
+            OP_REQUIRES(context, xyz2_tensor.dims()==3, errors::InvalidArgument("SelectionSort expects (b,m,3) dist shape."));
+            int b = xyz1_tensor.shape().dim_size(0);
+            int m = xyz1_tensor.shape().dim_size(1);
+            int n = xyz2_tensor.shape().dim_size(1);
+
+
+            Tensor *outi_tensor = nullptr;
+            OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape{b,m,n}, &outi_tensor));
+            Tensor *out_tensor = nullptr;
+            OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape{b,m,n}, &out_tensor));
+            
+            auto xyz1_flat = xyz1_tensor.flat<float>();
+            const float *xyz1 = &(xyz1_flat(0));
+            auto xyz2_flat = xyz2_tensor.flat<float>();
+            const float *xyz2 = &(xyz1_flat(0));
+
+
+            auto outi_flat = outi_tensor->flat<int>();
+            int *outi = &(outi_flat(0));
+            auto out_flat = out_tensor->flat<float>();
+            float *out = &(out_flat(0));
+            knn_gpu(b,n,m,k_,xyz1,xyz2,outi,out);
+        }
+    private:
+        int k_;}
+REGISTER_KERNEL_BUILDER(Name("KnnKernal").Device(DEVICE_GPU),KnnKernalGpuOp);
 
 void groupPointLauncher(int b, int n, int c, int m, int nsample, const float *points, const int *idx, float *out);
 class GroupPointGpuOp: public OpKernel{
@@ -169,6 +228,9 @@ class GroupPointGpuOp: public OpKernel{
         }
 };
 REGISTER_KERNEL_BUILDER(Name("GroupPoint").Device(DEVICE_GPU),GroupPointGpuOp);
+
+
+
 
 void groupPointGradLauncher(int b, int n, int c, int m, int nsample, const float *grad_out, const int *idx, float *grad_points);
 class GroupPointGradGpuOp: public OpKernel{
