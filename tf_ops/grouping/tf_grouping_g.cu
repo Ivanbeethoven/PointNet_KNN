@@ -166,9 +166,9 @@ __global__ void knn_kernal_gpu(int b,int n,int m,int k,const float * xyz1,const 
         for (int s=0;s<n;++s) {
             for(int pos =0;pos<3;pos++){
                 point_val[j][s] += (xyz1[s][pos] - xyz2[j][pos])*(xyz1[s][pos] - xyz2[j][pos]);
-                out[j*n+s] += (xyz1[s][pos] - xyz2[j][pos])*(xyz1[s][pos] - xyz2[j][pos]) ;//取出的是此batch中xyz1中第s个和xyz2中第j个个的距离
+                //out[j*n+s] += (xyz1[s][pos] - xyz2[j][pos])*(xyz1[s][pos] - xyz2[j][pos]) ;//取出的是此batch中xyz1中第s个和xyz2中第j个个的距离
             }
-            outi[j*n+s] = s;
+            //outi[j*n+s] = s;
             point_index[j][s]=s;
         }
     }
