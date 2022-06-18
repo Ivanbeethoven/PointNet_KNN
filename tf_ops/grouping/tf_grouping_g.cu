@@ -1,5 +1,6 @@
 // input: radius (1), nsample (1), xyz1 (b,n,3), xyz2 (b,m,3)
 // output: idx (b,m,nsample), pts_cnt (b,m)
+const int NN =512;
 __global__ void query_ball_point_gpu(int b, int n, int m, float radius, int nsample, const float *xyz1, const float *xyz2, int *idx, int *pts_cnt) {
     int batch_index = blockIdx.x;
     xyz1 += n*3*batch_index;
@@ -150,55 +151,55 @@ __global__ void selection_sort_gpu(int b, int n, int m, int k, const float *dist
  * @param out 
  * @return __global__ 
  */
-__global__ void knn_kernal_gpu(int b,int n,int m,int k,const float * xyz1,const float * xyz2,float * outi,float *out){
+__global__ void knn_kernal_gpu(int b,int n,int m,int k,const float * xyz1,const float * xyz2,int * outi,float *out){
     //TODO:实现knn核算子
     int batch_index = blockIdx.x;
     xyz1+=3*n*batch_index;
     xyz2+=3*m*batch_index;
+    outi+=m*3*batch_index;
+    out+=m*3*batch_index;
 
     int index = threadIdx.x;
     int stride = blockDim.x;
 
-    __shared__ int point_index[m][n];
-    __shared__ float point_val[m][n]; 
-    // copy from dist to dist_out
-    for (int j=index;j<m;j+=stride) {
-        for (int s=0;s<n;++s) {
-            for(int pos =0;pos<3;pos++){
-                point_val[j][s] += (xyz1[s][pos] - xyz2[j][pos])*(xyz1[s][pos] - xyz2[j][pos]);
-                //out[j*n+s] += (xyz1[s][pos] - xyz2[j][pos])*(xyz1[s][pos] - xyz2[j][pos]) ;//取出的是此batch中xyz1中第s个和xyz2中第j个个的距离
-            }
-            //outi[j*n+s] = s;
-            point_index[j][s]=s;
-        }
-    }
-        //此处不需要_syncthreads()因为都是在一个block中的数据 不会互相影响
+    // const int MM = m;
+    // const int NN = n;
+    int point_index[NN];
+    float point_val[NN];
     float *p_dist;
-    for (int j=index;j<m;j+=stride) {
+    // copy from dist to dist_out
+    for(int j=index;j<m;j+=stride) {
+        for(int s=0;s<n;++s) {
+            for(int pos =0;pos<3;pos++){
+                point_val[s] += (xyz1[s*3+pos] -xyz2[j*3+pos])*(xyz1[s*3+pos]-xyz2[j*3+pos]);//取出的是此batch中xyz1中第s个和xyz2中第j个个的距离
+            }
+            point_index[s]=s;
+        }
         p_dist = out+j*n;
         // selection sort for the first k elements
         for (int s=0;s<k;++s) {
             int min=s; 
             // find the min
             for (int t=s+1;t<n;++t) {
-                if (point_val[j][t]<point_val[j][min]) {
+                if (point_val[t]<point_val[min]) {
                     min = t;
                 }
             }
             // swap min-th and i-th element
             if (min!=s) {
-                float tmp = point_val[j][min];
-                point_val[j][min] = point_val[j][s];
-                point_val[j][s] = tmp;
-                int tmpi = point_index[j][min];
-                point_index[j][min] = point_index[j][s];
-                point_index[j][s] = tmpi;
+                float tmp = point_val[min];
+                point_val[min] = point_val[s];
+                point_val[s] = tmp;
+                int tmpi = point_index[min];
+                point_index[min] = point_index[s];
+                point_index[s] = tmpi;
             }
             //最后将结果写入输出变量
-            p_dist[s] = point_val[j][s];
-            outi[j*n+s] = point_index[j][min];
+            p_dist[s] = point_val[s];
+            outi[j*n+s] = point_index[min];
         }
     }
+        //此处不需要_syncthreads()因为都是在一个block中的数据 不会互相影响
 
 
 }
@@ -220,7 +221,7 @@ void groupPointGradLauncher(int b, int n, int c, int m, int nsample, const float
     //cudaDeviceSynchronize();
 }
 
-void knn_gpu(int b,int n,int m,int k,const float * xyz1,const float * xyz2,float * outi,float *out)
+void KnnKernalGpuLauncher(int b,int n,int m,int k,const float * xyz1,const float * xyz2,int * outi,float *out)
 {
     knn_kernal_gpu<<<b,256>>>(b,n,m,k,xyz1,xyz2,outi,out);
 }

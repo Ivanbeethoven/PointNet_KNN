@@ -233,8 +233,8 @@ class GroupPointGradGpuOp: public OpKernel{
 REGISTER_KERNEL_BUILDER(Name("GroupPointGrad").Device(DEVICE_GPU),GroupPointGradGpuOp);
 
 
-void knnKernalGpuLauncher(int b, int n, int m, int k, const float *xyz1,const float *xyz2, int *outi, float *out)
-void KnnKernalGpuOp:public OpKernel{
+void KnnKernalGpuLauncher(int b,int n,int m,int k,const float * xyz1,const float * xyz2,int * outi,float *out);
+class KnnKernalGpuOp:public OpKernel{
     public:
         explicit KnnKernalGpuOp(OpKernelConstruction* context) : OpKernel(context) {
             OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
@@ -269,10 +269,11 @@ void KnnKernalGpuOp:public OpKernel{
 
             
 //tensorflow::ops::SparseSlice 切分
-            knn_gpu(b,n,m,k_,xyz1,xyz2,index,out);
+            KnnKernalGpuLauncher(b,n,m,k_,xyz1,xyz2,index,val);
 
 
         }
     private:
-        int k_;}
+        int k_;
+    };
 REGISTER_KERNEL_BUILDER(Name("KnnKernal").Device(DEVICE_GPU),KnnKernalGpuOp);
